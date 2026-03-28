@@ -2,9 +2,11 @@ import { ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { Crosshair, Target, Database, Menu } from "lucide-react";
 import { motion } from "framer-motion";
+import { useLanguage } from "@/contexts/language-context";
 
 export function Layout({ children }: { children: ReactNode }) {
   const [location] = useLocation();
+  const { language, setLanguage, t } = useLanguage();
 
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col relative overflow-hidden">
@@ -41,7 +43,7 @@ export function Layout({ children }: { children: ReactNode }) {
               }`}
             >
               <Target className="w-4 h-4" />
-              Calculator
+              {t.nav.calculator}
             </Link>
             <Link 
               href="/profiles" 
@@ -52,8 +54,32 @@ export function Layout({ children }: { children: ReactNode }) {
               }`}
             >
               <Database className="w-4 h-4" />
-              Profiles
+              {t.nav.profiles}
             </Link>
+
+            {/* Language Toggle */}
+            <div className="ml-3 flex items-center border border-border rounded-md overflow-hidden">
+              <button
+                onClick={() => setLanguage("en")}
+                className={`px-3 py-1.5 text-xs font-display font-bold tracking-widest transition-all ${
+                  language === "en"
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                }`}
+              >
+                EN
+              </button>
+              <button
+                onClick={() => setLanguage("ua")}
+                className={`px-3 py-1.5 text-xs font-display font-bold tracking-widest transition-all ${
+                  language === "ua"
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                }`}
+              >
+                УКР
+              </button>
+            </div>
           </nav>
 
           <button className="md:hidden p-2 text-muted-foreground hover:text-foreground">

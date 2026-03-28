@@ -6,6 +6,7 @@ import { useCalculatorMutation, useProfiles } from "@/hooks/use-ballistics";
 import { Activity, Wind, Mountain, Layers, Target, ChevronRight, Loader2, Save } from "lucide-react";
 import type { CalculationInput, CalculationResult } from "@workspace/api-client-react/src/generated/api.schemas";
 import { useToast } from "@/hooks/use-toast";
+import { useLanguage } from "@/contexts/language-context";
 
 const DEFAULT_INPUTS: CalculationInput = {
   muzzleVelocity: 2710,
@@ -29,6 +30,7 @@ const DEFAULT_INPUTS: CalculationInput = {
 
 export default function Calculator() {
   const { toast } = useToast();
+  const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState<"profile" | "environment">("profile");
   const [resultTab, setResultTab] = useState<"table" | "chart">("table");
   const [result, setResult] = useState<CalculationResult | null>(null);
@@ -40,7 +42,6 @@ export default function Calculator() {
     defaultValues: DEFAULT_INPUTS
   });
 
-  // Watch for profile changes to load data
   const selectedProfileId = form.watch("profileId");
   
   useEffect(() => {
@@ -58,12 +59,12 @@ export default function Calculator() {
           scopeHeight: profile.scopeHeight
         });
         toast({
-          title: "Profile Loaded",
-          description: `Loaded values for ${profile.name}`,
+          title: t.calculator.profileLoaded,
+          description: `${t.calculator.profileLoadedDesc} ${profile.name}`,
         });
       }
     }
-  }, [selectedProfileId, profiles, form, toast]);
+  }, [selectedProfileId, profiles, form, toast, t]);
 
   const onSubmit = (data: CalculationInput) => {
     calcMutation.mutate(
@@ -72,10 +73,10 @@ export default function Calculator() {
         onSuccess: (res) => {
           setResult(res);
         },
-        onError: (err) => {
+        onError: () => {
           toast({
-            title: "Calculation Failed",
-            description: "Check your inputs and try again.",
+            title: t.calculator.calcFailed,
+            description: t.calculator.calcFailedDesc,
             variant: "destructive"
           });
         }
@@ -105,7 +106,7 @@ export default function Calculator() {
             <div className="p-4 border-b border-border bg-muted/30 flex justify-between items-center">
               <h2 className="font-display font-bold tracking-widest uppercase flex items-center gap-2">
                 <Layers className="w-4 h-4 text-primary" />
-                Parameters
+                {t.calculator.parameters}
               </h2>
             </div>
             
@@ -114,13 +115,13 @@ export default function Calculator() {
                 onClick={() => setActiveTab("profile")}
                 className={`flex-1 py-3 text-sm font-display font-bold uppercase tracking-wider transition-colors ${activeTab === "profile" ? "text-primary border-b-2 border-primary bg-primary/5" : "text-muted-foreground hover:bg-muted/50"}`}
               >
-                Rifle & Ammo
+                {t.calculator.rifleAmmo}
               </button>
               <button 
                 onClick={() => setActiveTab("environment")}
                 className={`flex-1 py-3 text-sm font-display font-bold uppercase tracking-wider transition-colors ${activeTab === "environment" ? "text-primary border-b-2 border-primary bg-primary/5" : "text-muted-foreground hover:bg-muted/50"}`}
               >
-                Environment
+                {t.calculator.environment}
               </button>
             </div>
 
@@ -129,12 +130,12 @@ export default function Calculator() {
               {/* PROFILE TAB */}
               <div className={activeTab === "profile" ? "block space-y-5" : "hidden"}>
                 <div className="space-y-1.5">
-                  <label className="text-xs font-display font-semibold text-primary uppercase tracking-wider">Load Saved Profile</label>
+                  <label className="text-xs font-display font-semibold text-primary uppercase tracking-wider">{t.calculator.loadProfile}</label>
                   <select 
                     className="w-full bg-zinc-950/80 border border-zinc-700 rounded-md px-3 py-2.5 text-sm text-foreground focus:outline-none focus:border-primary transition-all appearance-none"
                     {...form.register("profileId", { valueAsNumber: true })}
                   >
-                    <option value="">-- Manual Entry --</option>
+                    <option value="">{t.calculator.manualEntry}</option>
                     {profiles?.map(p => (
                       <option key={p.id} value={p.id}>{p.name} ({p.caliber})</option>
                     ))}
@@ -142,11 +143,11 @@ export default function Calculator() {
                 </div>
 
                 <div className="grid grid-cols-2 gap-4 pt-2">
-                  <InputField label="Bullet Weight (gr)" name="bulletWeight" />
-                  <InputField label="Diameter (in)" name="bulletDiameter" />
-                  <InputField label="Muzzle Vel (fps)" name="muzzleVelocity" />
+                  <InputField label={t.calculator.bulletWeight} name="bulletWeight" />
+                  <InputField label={t.calculator.diameter} name="bulletDiameter" />
+                  <InputField label={t.calculator.muzzleVel} name="muzzleVelocity" />
                   <div className="space-y-1.5">
-                    <label className="text-xs font-display font-semibold text-muted-foreground uppercase tracking-wider">BC Model</label>
+                    <label className="text-xs font-display font-semibold text-muted-foreground uppercase tracking-wider">{t.calculator.bcModel}</label>
                     <select 
                       className="w-full bg-zinc-950/50 border border-zinc-800 rounded-md px-3 py-2 text-sm text-foreground focus:outline-none focus:border-primary transition-all"
                       {...form.register("bcModel")}
@@ -155,29 +156,29 @@ export default function Calculator() {
                       <option value="G7">G7</option>
                     </select>
                   </div>
-                  <InputField label="Ballistic Coeff" name="ballisticCoefficient" step="0.001" />
-                  <InputField label="Zero Range (yd)" name="zeroRange" />
-                  <InputField label="Scope Height (in)" name="scopeHeight" step="0.1" />
+                  <InputField label={t.calculator.ballisticCoeff} name="ballisticCoefficient" step="0.001" />
+                  <InputField label={t.calculator.zeroRange} name="zeroRange" />
+                  <InputField label={t.calculator.scopeHeight} name="scopeHeight" step="0.1" />
                 </div>
               </div>
 
               {/* ENVIRONMENT TAB */}
               <div className={activeTab === "environment" ? "block space-y-5" : "hidden"}>
                 <div className="grid grid-cols-2 gap-4">
-                  <InputField label="Wind Speed (mph)" name="windSpeed" />
-                  <InputField label="Wind Angle (deg)" name="windAngle" />
-                  <InputField label="Temp (°F)" name="temperature" />
-                  <InputField label="Altitude (ft)" name="altitude" />
-                  <InputField label="Pressure (inHg)" name="pressure" step="0.01" />
-                  <InputField label="Humidity (%)" name="humidity" />
-                  <InputField label="Target Angle (°)" name="targetAngle" />
+                  <InputField label={t.calculator.windSpeed} name="windSpeed" />
+                  <InputField label={t.calculator.windAngle} name="windAngle" />
+                  <InputField label={t.calculator.temperature} name="temperature" />
+                  <InputField label={t.calculator.altitude} name="altitude" />
+                  <InputField label={t.calculator.pressure} name="pressure" step="0.01" />
+                  <InputField label={t.calculator.humidity} name="humidity" />
+                  <InputField label={t.calculator.targetAngle} name="targetAngle" />
                 </div>
               </div>
 
-              {/* RANGE SETTINGS (Always visible at bottom of form) */}
+              {/* RANGE SETTINGS */}
               <div className="pt-4 border-t border-border/50 grid grid-cols-2 gap-4">
-                 <InputField label="Max Range (yd)" name="maxRange" />
-                 <InputField label="Step Size (yd)" name="rangeStep" />
+                 <InputField label={t.calculator.maxRange} name="maxRange" />
+                 <InputField label={t.calculator.stepSize} name="rangeStep" />
               </div>
 
             </form>
@@ -190,7 +191,7 @@ export default function Calculator() {
             className="w-full py-4 rounded-xl font-display font-bold text-lg tracking-widest uppercase bg-gradient-to-b from-primary to-[#d98500] text-[#111] shadow-[0_0_20px_rgba(255,157,0,0.2)] hover:shadow-[0_0_30px_rgba(255,157,0,0.4)] hover:-translate-y-0.5 active:translate-y-0 transition-all duration-200 disabled:opacity-50 flex justify-center items-center gap-2"
           >
             {calcMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin" /> : <Activity className="w-5 h-5" />}
-            {calcMutation.isPending ? 'Computing...' : 'Calculate Trajectory'}
+            {calcMutation.isPending ? t.calculator.computing : t.calculator.calculate}
           </button>
         </div>
 
@@ -200,8 +201,8 @@ export default function Calculator() {
           {!result ? (
             <div className="h-[600px] flex flex-col items-center justify-center border-2 border-dashed border-border rounded-xl bg-card/30 text-muted-foreground p-8 text-center">
               <Target className="w-16 h-16 mb-4 opacity-20" />
-              <h3 className="font-display text-xl uppercase tracking-widest mb-2">Awaiting Parameters</h3>
-              <p className="max-w-md text-sm">Enter your rifle, ammunition, and environmental data, then press calculate to generate the ballistic trajectory.</p>
+              <h3 className="font-display text-xl uppercase tracking-widest mb-2">{t.calculator.awaitingParameters}</h3>
+              <p className="max-w-md text-sm">{t.calculator.awaitingDesc}</p>
             </div>
           ) : (
             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -209,19 +210,19 @@ export default function Calculator() {
               {/* Summary Cards */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div className="bg-card border border-border rounded-lg p-4 shadow-lg flex flex-col items-center justify-center text-center">
-                  <span className="text-xs font-display font-bold text-muted-foreground uppercase tracking-widest mb-1">Max Range</span>
+                  <span className="text-xs font-display font-bold text-muted-foreground uppercase tracking-widest mb-1">{t.calculator.maxRangeLabel}</span>
                   <span className="text-2xl font-mono text-foreground">{result.maxRange} <span className="text-sm text-muted-foreground">yd</span></span>
                 </div>
                 <div className="bg-card border border-border rounded-lg p-4 shadow-lg flex flex-col items-center justify-center text-center">
-                  <span className="text-xs font-display font-bold text-muted-foreground uppercase tracking-widest mb-1">Zero</span>
+                  <span className="text-xs font-display font-bold text-muted-foreground uppercase tracking-widest mb-1">{t.calculator.zero}</span>
                   <span className="text-2xl font-mono text-foreground">{result.zeroRange} <span className="text-sm text-muted-foreground">yd</span></span>
                 </div>
                 <div className="bg-card border border-border rounded-lg p-4 shadow-lg flex flex-col items-center justify-center text-center">
-                  <span className="text-xs font-display font-bold text-muted-foreground uppercase tracking-widest mb-1">PBR (+/- 3")</span>
+                  <span className="text-xs font-display font-bold text-muted-foreground uppercase tracking-widest mb-1">{t.calculator.pbr}</span>
                   <span className="text-2xl font-mono text-primary">{result.pointBlankRange} <span className="text-sm text-primary/70">yd</span></span>
                 </div>
                 <div className="bg-card border border-border rounded-lg p-4 shadow-lg flex flex-col items-center justify-center text-center">
-                  <span className="text-xs font-display font-bold text-muted-foreground uppercase tracking-widest mb-1">Supersonic Limit</span>
+                  <span className="text-xs font-display font-bold text-muted-foreground uppercase tracking-widest mb-1">{t.calculator.supersonicLimit}</span>
                   <span className="text-2xl font-mono text-foreground">{result.supersonicLimit} <span className="text-sm text-muted-foreground">yd</span></span>
                 </div>
               </div>
@@ -233,13 +234,13 @@ export default function Calculator() {
                     onClick={() => setResultTab("table")}
                     className={`px-6 py-3 text-sm font-display font-bold uppercase tracking-wider transition-colors ${resultTab === "table" ? "text-primary border-b-2 border-primary bg-primary/5" : "text-muted-foreground hover:bg-muted/50"}`}
                   >
-                    Data Table
+                    {t.calculator.dataTable}
                   </button>
                   <button 
                     onClick={() => setResultTab("chart")}
                     className={`px-6 py-3 text-sm font-display font-bold uppercase tracking-wider transition-colors ${resultTab === "chart" ? "text-primary border-b-2 border-primary bg-primary/5" : "text-muted-foreground hover:bg-muted/50"}`}
                   >
-                    Drop Curve
+                    {t.calculator.dropCurve}
                   </button>
                 </div>
                 
@@ -249,14 +250,14 @@ export default function Calculator() {
                       <table className="w-full text-sm text-right">
                         <thead className="bg-zinc-950/80 text-muted-foreground sticky top-0 z-10 font-display text-xs uppercase tracking-widest shadow-sm">
                           <tr>
-                            <th className="px-4 py-3 font-semibold text-left">Range<br/><span className="text-[10px] opacity-70">YD</span></th>
-                            <th className="px-4 py-3 font-semibold">Drop<br/><span className="text-[10px] opacity-70">IN</span></th>
-                            <th className="px-4 py-3 font-semibold text-primary">Drop<br/><span className="text-[10px] opacity-70">MOA</span></th>
-                            <th className="px-4 py-3 font-semibold">Wind<br/><span className="text-[10px] opacity-70">IN</span></th>
-                            <th className="px-4 py-3 font-semibold text-primary">Wind<br/><span className="text-[10px] opacity-70">MOA</span></th>
-                            <th className="px-4 py-3 font-semibold">Velocity<br/><span className="text-[10px] opacity-70">FPS</span></th>
-                            <th className="px-4 py-3 font-semibold">Energy<br/><span className="text-[10px] opacity-70">FT-LB</span></th>
-                            <th className="px-4 py-3 font-semibold">Time<br/><span className="text-[10px] opacity-70">SEC</span></th>
+                            <th className="px-4 py-3 font-semibold text-left">{t.calculator.range}<br/><span className="text-[10px] opacity-70">YD</span></th>
+                            <th className="px-4 py-3 font-semibold">{t.calculator.drop}<br/><span className="text-[10px] opacity-70">IN</span></th>
+                            <th className="px-4 py-3 font-semibold text-primary">{t.calculator.drop}<br/><span className="text-[10px] opacity-70">MOA</span></th>
+                            <th className="px-4 py-3 font-semibold">{t.calculator.wind}<br/><span className="text-[10px] opacity-70">IN</span></th>
+                            <th className="px-4 py-3 font-semibold text-primary">{t.calculator.wind}<br/><span className="text-[10px] opacity-70">MOA</span></th>
+                            <th className="px-4 py-3 font-semibold">{t.calculator.velocity}<br/><span className="text-[10px] opacity-70">FPS</span></th>
+                            <th className="px-4 py-3 font-semibold">{t.calculator.energy}<br/><span className="text-[10px] opacity-70">FT-LB</span></th>
+                            <th className="px-4 py-3 font-semibold">{t.calculator.time}<br/><span className="text-[10px] opacity-70">SEC</span></th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-zinc-800/50 bg-card">
