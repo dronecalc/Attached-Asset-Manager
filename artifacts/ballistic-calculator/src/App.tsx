@@ -4,9 +4,9 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { LanguageProvider } from "@/contexts/language-context";
 
-// Pages
 import Calculator from "./pages/calculator";
 import Profiles from "./pages/profiles";
+import Targets from "./pages/targets";
 import NotFound from "./pages/not-found";
 
 const queryClient = new QueryClient({
@@ -23,6 +23,7 @@ function Router() {
     <Switch>
       <Route path="/" component={Calculator} />
       <Route path="/profiles" component={Profiles} />
+      <Route path="/targets" component={Targets} />
       <Route component={NotFound} />
     </Switch>
   );

@@ -1,6 +1,6 @@
 import { ReactNode } from "react";
 import { Link, useLocation } from "wouter";
-import { Crosshair, Target, Database, Menu } from "lucide-react";
+import { Crosshair, Target, Database, Menu, Aperture } from "lucide-react";
 import { motion } from "framer-motion";
 import { useLanguage } from "@/contexts/language-context";
 
@@ -8,19 +8,33 @@ export function Layout({ children }: { children: ReactNode }) {
   const [location] = useLocation();
   const { language, setLanguage, t } = useLanguage();
 
+  const navLink = (href: string, label: string, icon: ReactNode) => (
+    <Link
+      href={href}
+      className={`px-4 py-2 rounded-md font-display uppercase tracking-widest text-sm font-semibold transition-all duration-200 flex items-center gap-2 ${
+        location === href
+          ? "bg-primary text-primary-foreground shadow-[0_0_10px_rgba(255,157,0,0.3)]"
+          : "text-muted-foreground hover:text-foreground hover:bg-muted"
+      }`}
+    >
+      {icon}
+      {label}
+    </Link>
+  );
+
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col relative overflow-hidden">
       {/* Tactical Background Texture */}
-      <div 
+      <div
         className="fixed inset-0 z-0 opacity-10 pointer-events-none"
-        style={{ 
-          backgroundImage: `url(${import.meta.env.BASE_URL}images/tactical-bg.png)`, 
-          backgroundSize: 'cover', 
-          backgroundPosition: 'center',
-          mixBlendMode: 'overlay'
+        style={{
+          backgroundImage: `url(${import.meta.env.BASE_URL}images/tactical-bg.png)`,
+          backgroundSize: "cover",
+          backgroundPosition: "center",
+          mixBlendMode: "overlay",
         }}
       />
-      
+
       {/* Navbar */}
       <header className="relative z-20 border-b border-border bg-background/80 backdrop-blur-md">
         <div className="container mx-auto px-4 h-16 flex items-center justify-between">
@@ -34,28 +48,9 @@ export function Layout({ children }: { children: ReactNode }) {
           </div>
 
           <nav className="hidden md:flex items-center gap-1">
-            <Link 
-              href="/" 
-              className={`px-4 py-2 rounded-md font-display uppercase tracking-widest text-sm font-semibold transition-all duration-200 flex items-center gap-2 ${
-                location === "/" 
-                  ? "bg-primary text-primary-foreground shadow-[0_0_10px_rgba(255,157,0,0.3)]" 
-                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
-              }`}
-            >
-              <Target className="w-4 h-4" />
-              {t.nav.calculator}
-            </Link>
-            <Link 
-              href="/profiles" 
-              className={`px-4 py-2 rounded-md font-display uppercase tracking-widest text-sm font-semibold transition-all duration-200 flex items-center gap-2 ${
-                location === "/profiles" 
-                  ? "bg-primary text-primary-foreground shadow-[0_0_10px_rgba(255,157,0,0.3)]" 
-                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
-              }`}
-            >
-              <Database className="w-4 h-4" />
-              {t.nav.profiles}
-            </Link>
+            {navLink("/", t.nav.calculator, <Target className="w-4 h-4" />)}
+            {navLink("/profiles", t.nav.profiles, <Database className="w-4 h-4" />)}
+            {navLink("/targets", t.nav.targets, <Aperture className="w-4 h-4" />)}
 
             {/* Language Toggle */}
             <div className="ml-3 flex items-center border border-border rounded-md overflow-hidden">
@@ -90,7 +85,7 @@ export function Layout({ children }: { children: ReactNode }) {
 
       {/* Main Content */}
       <main className="relative z-10 flex-1 flex flex-col">
-        <motion.div 
+        <motion.div
           key={location}
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}

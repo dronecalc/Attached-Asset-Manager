@@ -13,6 +13,8 @@ tags:
     description: Rifle and ammunition profile management
   - name: ballistics
     description: Ballistic calculation operations
+  - name: targets
+    description: Target session management and analysis
 paths:
   /healthz:
     get:
@@ -154,6 +156,60 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CalculationResult"
+
+  /target-sessions:
+    get:
+      operationId: getTargetSessions
+      tags: [targets]
+      summary: List all target sessions
+      description: Returns all saved target analysis sessions
+      responses:
+        "200":
+          description: List of target sessions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TargetSession"
+    post:
+      operationId: createTargetSession
+      tags: [targets]
+      summary: Save a target session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTargetSessionInput"
+      responses:
+        "201":
+          description: Created target session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TargetSession"
+
+  /target-sessions/{id}:
+    delete:
+      operationId: deleteTargetSession
+      tags: [targets]
+      summary: Delete a target session
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
 components:
   schemas:
@@ -409,3 +465,115 @@ components:
         - zeroRange
         - pointBlankRange
         - supersonicLimit
+
+    TargetHole:
+      type: object
+      properties:
+        id:
+          type: integer
+        sessionId:
+          type: integer
+        x:
+          type: number
+          description: Normalized X position (0-1)
+        y:
+          type: number
+          description: Normalized Y position (0-1)
+      required:
+        - id
+        - sessionId
+        - x
+        - y
+
+    TargetSession:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        distanceYards:
+          type: number
+        targetWidthInches:
+          type: number
+        imageData:
+          type: string
+          description: Base64 encoded JPEG image
+        notes:
+          type: string
+          nullable: true
+        holeCount:
+          type: integer
+        esInches:
+          type: number
+          nullable: true
+        esMOA:
+          type: number
+          nullable: true
+        mpiX:
+          type: number
+          nullable: true
+        mpiY:
+          type: number
+          nullable: true
+        createdAt:
+          type: string
+        holes:
+          type: array
+          items:
+            $ref: "#/components/schemas/TargetHole"
+      required:
+        - id
+        - name
+        - distanceYards
+        - targetWidthInches
+        - imageData
+        - holeCount
+        - createdAt
+        - holes
+
+    CreateTargetSessionInput:
+      type: object
+      properties:
+        name:
+          type: string
+        distanceYards:
+          type: number
+        targetWidthInches:
+          type: number
+        imageData:
+          type: string
+        notes:
+          type: string
+          nullable: true
+        holes:
+          type: array
+          items:
+            type: object
+            properties:
+              x:
+                type: number
+              y:
+                type: number
+            required: [x, y]
+        holeCount:
+          type: integer
+        esInches:
+          type: number
+          nullable: true
+        esMOA:
+          type: number
+          nullable: true
+        mpiX:
+          type: number
+          nullable: true
+        mpiY:
+          type: number
+          nullable: true
+      required:
+        - name
+        - distanceYards
+        - targetWidthInches
+        - imageData
+        - holes
+        - holeCount
