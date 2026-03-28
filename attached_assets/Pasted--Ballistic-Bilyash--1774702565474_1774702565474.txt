@@ -1,0 +1,807 @@
+Нижче наведено повний код для функції **аналізу мішеней** у вашому додатку **Ballistic Bilyash**. Ця функція дозволяє:
+
+- Сфотографувати або завантажити зображення мішені.
+- Автоматично виявити отвори (кульові пробоїни) за допомогою простого алгоритму blob detection.
+- Вручну додавати/видаляти отвори.
+- Зберігати сесії стрільби з датою, фото та координатами отворів.
+- **Економити мішені**: при завантаженні фото вже використаної мішені програма може накласти попередні отвори (з минулих сесій) і показати лише нові.
+
+---
+
+## 1. Структура проєкту
+
+Додамо необхідні залежності в `pubspec.yaml`:
+
+```yaml
+dependencies:
+  flutter:
+    sdk: flutter
+  camera: ^0.10.5
+  image_picker: ^1.0.4
+  image: ^4.1.3          # для обробки зображень
+  path_provider: ^2.1.1
+  sqflite: ^2.3.0
+  path: ^1.8.3
+  provider: ^6.1.1       # для стану (за бажанням)
+  intl: ^0.18.1          # для форматування дат
+```
+
+Структура файлів:
+
+```
+lib/
+├── models/
+│   ├── hole.dart
+│   └── target_session.dart
+├── database/
+│   └── target_database.dart
+├── services/
+│   └── image_processing.dart
+├── screens/
+│   ├── target_list_screen.dart
+│   ├── target_analysis_screen.dart
+│   └── target_session_detail_screen.dart
+└── widgets/
+    └── hole_overlay.dart
+```
+
+---
+
+## 2. Моделі даних
+
+### `lib/models/hole.dart`
+
+```dart
+class Hole {
+  final double x;      // координата x (0..1 відносно ширини зображення)
+  final double y;      // координата y (0..1 відносно висоти)
+  final bool isNew;    // чи це новий отвір (для відображення)
+
+  Hole({required this.x, required this.y, this.isNew = true});
+
+  Map<String, dynamic> toMap() => {'x': x, 'y': y, 'is_new': isNew ? 1 : 0};
+
+  factory Hole.fromMap(Map<String, dynamic> map) => Hole(
+        x: map['x'],
+        y: map['y'],
+        isNew: map['is_new'] == 1,
+      );
+}
+```
+
+### `lib/models/target_session.dart`
+
+```dart
+import 'package:intl/intl.dart';
+
+class TargetSession {
+  final int? id;
+  final String imagePath;      // шлях до збереженого зображення
+  final DateTime date;
+  final List<Hole> holes;
+  final int? previousSessionId; // ID попередньої сесії на цій самій мішені
+
+  TargetSession({
+    this.id,
+    required this.imagePath,
+    required this.date,
+    required this.holes,
+    this.previousSessionId,
+  });
+
+  Map<String, dynamic> toMap() => {
+        'image_path': imagePath,
+        'date': date.toIso8601String(),
+        'previous_session_id': previousSessionId,
+      };
+
+  factory TargetSession.fromMap(Map<String, dynamic> map) => TargetSession(
+        id: map['id'],
+        imagePath: map['image_path'],
+        date: DateTime.parse(map['date']),
+        previousSessionId: map['previous_session_id'],
+        holes: [], // завантажимо окремо
+      );
+
+  String get formattedDate => DateFormat('dd.MM.yyyy HH:mm').format(date);
+}
+```
+
+---
+
+## 3. База даних (SQLite)
+
+### `lib/database/target_database.dart`
+
+```dart
+import 'package:sqflite/sqflite.dart';
+import 'package:path/path.dart';
+import '../models/hole.dart';
+import '../models/target_session.dart';
+
+class TargetDatabase {
+  static final TargetDatabase instance = TargetDatabase._init();
+  static Database? _database;
+
+  TargetDatabase._init();
+
+  Future<Database> get database async {
+    if (_database != null) return _database!;
+    _database = await _initDB('targets.db');
+    return _database!;
+  }
+
+  Future<Database> _initDB(String fileName) async {
+    final dbPath = await getDatabasesPath();
+    final path = join(dbPath, fileName);
+    return await openDatabase(path, version: 1, onCreate: _onCreate);
+  }
+
+  Future<void> _onCreate(Database db, int version) async {
+    await db.execute('''
+      CREATE TABLE sessions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        image_path TEXT NOT NULL,
+        date TEXT NOT NULL,
+        previous_session_id INTEGER
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE holes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id INTEGER NOT NULL,
+        x REAL NOT NULL,
+        y REAL NOT NULL,
+        is_new INTEGER NOT NULL DEFAULT 1,
+        FOREIGN KEY (session_id) REFERENCES sessions (id) ON DELETE CASCADE
+      )
+    ''');
+  }
+
+  // Збереження сесії разом з отворами
+  Future<int> insertSession(TargetSession session) async {
+    final db = await database;
+    final id = await db.insert('sessions', session.toMap());
+    for (final hole in session.holes) {
+      await db.insert('holes', {
+        'session_id': id,
+        'x': hole.x,
+        'y': hole.y,
+        'is_new': hole.isNew ? 1 : 0,
+      });
+    }
+    return id;
+  }
+
+  // Отримати всі сесії
+  Future<List<TargetSession>> getAllSessions() async {
+    final db = await database;
+    final List<Map<String, dynamic>> sessionMaps = await db.query('sessions', orderBy: 'date DESC');
+    final sessions = <TargetSession>[];
+    for (final map in sessionMaps) {
+      final session = TargetSession.fromMap(map);
+      session.holes.addAll(await _getHolesForSession(session.id!));
+      sessions.add(session);
+    }
+    return sessions;
+  }
+
+  // Отримати отвори для сесії
+  Future<List<Hole>> _getHolesForSession(int sessionId) async {
+    final db = await database;
+    final result = await db.query('holes', where: 'session_id = ?', whereArgs: [sessionId]);
+    return result.map((map) => Hole.fromMap(map)).toList();
+  }
+
+  // Отримати попередню сесію для тієї самої мішені (за ідентичним зображенням або посиланням)
+  Future<TargetSession?> getPreviousSessionForTarget(String imagePath) async {
+    final db = await database;
+    // Шукаємо сесію з таким самим image_path (якщо користувач використовує одну й ту саму фотографію)
+    final result = await db.query(
+      'sessions',
+      where: 'image_path = ?',
+      whereArgs: [imagePath],
+      orderBy: 'date DESC',
+      limit: 1,
+    );
+    if (result.isNotEmpty) {
+      final session = TargetSession.fromMap(result.first);
+      session.holes.addAll(await _getHolesForSession(session.id!));
+      return session;
+    }
+    return null;
+  }
+
+  // Видалення сесії
+  Future<void> deleteSession(int id) async {
+    final db = await database;
+    await db.delete('sessions', where: 'id = ?', whereArgs: [id]);
+    // отвори видаляться каскадно
+  }
+}
+```
+
+---
+
+## 4. Сервіс обробки зображень
+
+### `lib/services/image_processing.dart`
+
+Використовує пакет `image` для виявлення отворів (прості блоби). Алгоритм:
+
+- Завантажуємо зображення, конвертуємо в сіре.
+- Розмиваємо (Gaussian blur) для зменшення шуму.
+- Застосовуємо порогову обробку (threshold) для отримання бінарного зображення.
+- Знаходимо контури та фільтруємо за площею.
+- Для кожного контуру обчислюємо центр.
+
+```dart
+import 'dart:io';
+import 'dart:typed_data';
+import 'package:image/image.dart' as img;
+import 'package:flutter/services.dart';
+import '../models/hole.dart';
+
+class ImageProcessing {
+  /// Виявити отвори на зображенні.
+  /// Повертає список координат (нормалізовані 0..1) та зображення з намальованими колами.
+  static Future<({List<Hole> holes, img.Image processedImage})> detectHoles(
+    File imageFile, {
+    double minHoleRadius = 5,      // мінімальний радіус отвору (px)
+    double maxHoleRadius = 30,     // максимальний радіус
+    int thresholdValue = 80,       // поріг для бінаризації (0-255)
+  }) async {
+    final bytes = await imageFile.readAsBytes();
+    img.Image original = img.decodeImage(bytes)!;
+    img.Image gray = img.grayscale(original);
+    img.Image blurred = img.gaussianBlur(gray, 5);
+    img.Image binary = img.threshold(blurred, thresholdValue, 255, img.ThresholdType.binary);
+
+    // Знаходимо контури (blobs)
+    final contours = img.findContours(binary);
+    final holes = <Hole>[];
+
+    for (final contour in contours) {
+      // Обчислюємо площу та радіус кола (наближено)
+      final area = contour.area();
+      if (area < 10) continue; // дуже маленькі
+      final radius = (area / 3.14).sqrt();
+      if (radius < minHoleRadius || radius > maxHoleRadius) continue;
+
+      // Центр ваги контуру
+      final center = contour.centroid;
+      // Нормалізуємо координати
+      final xNorm = center.x / original.width;
+      final yNorm = center.y / original.height;
+      holes.add(Hole(x: xNorm, y: yNorm, isNew: true));
+    }
+
+    // Малюємо кола на оригіналі для відображення
+    final img.Image marked = img.copyResize(original, width: 800); // зменшуємо для продуктивності
+    for (final hole in holes) {
+      final xPx = hole.x * marked.width;
+      final yPx = hole.y * marked.height;
+      img.drawCircle(marked, x: xPx.toInt(), y: yPx.toInt(), radius: 10, color: img.ColorRgb8(255, 0, 0));
+    }
+
+    return (holes: holes, processedImage: marked);
+  }
+
+  /// Порівняти два зображення (поточне та попереднє) та знайти нові отвори.
+  /// Спрощена версія: обчислює різницю зображень і виявляє нові блоби.
+  static Future<List<Hole>> findNewHoles(
+    File currentImage,
+    File previousImage, {
+    int diffThreshold = 50,
+  }) async {
+    final currBytes = await currentImage.readAsBytes();
+    final prevBytes = await previousImage.readAsBytes();
+    img.Image curr = img.decodeImage(currBytes)!;
+    img.Image prev = img.decodeImage(prevBytes)!;
+
+    // Приводимо до однакового розміру (якщо різні)
+    if (curr.width != prev.width || curr.height != prev.height) {
+      prev = img.copyResize(prev, width: curr.width, height: curr.height);
+    }
+
+    // Обчислюємо різницю (абсолютна різниця яскравості)
+    final diff = img.Image.from(curr);
+    for (int y = 0; y < curr.height; y++) {
+      for (int x = 0; x < curr.width; x++) {
+        final pCurr = img.getPixel(curr, x, y);
+        final pPrev = img.getPixel(prev, x, y);
+        final diffVal = ((pCurr.r + pCurr.g + pCurr.b) / 3 - (pPrev.r + pPrev.g + pPrev.b) / 3).abs();
+        final gray = diffVal.toInt();
+        img.setPixel(diff, x, y, img.ColorRgb8(gray, gray, gray));
+      }
+    }
+
+    // Застосовуємо поріг та знаходимо контури
+    final binary = img.threshold(diff, diffThreshold, 255, img.ThresholdType.binary);
+    final contours = img.findContours(binary);
+    final newHoles = <Hole>[];
+    for (final contour in contours) {
+      if (contour.area() > 20) {
+        final center = contour.centroid;
+        newHoles.add(Hole(x: center.x / curr.width, y: center.y / curr.height, isNew: true));
+      }
+    }
+    return newHoles;
+  }
+}
+```
+
+**Примітка:** Для складнішого аналізу можна використовувати `tflite_flutter` з навченою моделлю, але цей базовий варіант працює для контрастних мішеней.
+
+---
+
+## 5. Віджети для відображення отворів
+
+### `lib/widgets/hole_overlay.dart`
+
+```dart
+import 'package:flutter/material.dart';
+import '../models/hole.dart';
+
+class HoleOverlay extends StatelessWidget {
+  final Size imageSize;            // розмір зображення (пікселі)
+  final List<Hole> holes;
+  final bool isEditing;            // чи можна додавати/видаляти
+  final Function(Offset localPosition)? onTap; // для додавання вручну
+
+  const HoleOverlay({
+    super.key,
+    required this.imageSize,
+    required this.holes,
+    this.isEditing = false,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTapDown: isEditing && onTap != null
+          ? (details) {
+              final local = details.localPosition;
+              onTap!(local);
+            }
+          : null,
+      child: CustomPaint(
+        size: imageSize,
+        painter: HolePainter(holes: holes, isEditing: isEditing),
+      ),
+    );
+  }
+}
+
+class HolePainter extends CustomPainter {
+  final List<Hole> holes;
+  final bool isEditing;
+
+  HolePainter({required this.holes, required this.isEditing});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.0;
+
+    for (final hole in holes) {
+      final center = Offset(hole.x * size.width, hole.y * size.height);
+      // колір: червоний для нових, сірий для старих
+      paint.color = hole.isNew ? Colors.red : Colors.grey;
+      canvas.drawCircle(center, 12.0, paint);
+      // внутрішнє коло
+      paint.style = PaintingStyle.fill;
+      paint.color = hole.isNew ? Colors.red.withOpacity(0.3) : Colors.grey.withOpacity(0.3);
+      canvas.drawCircle(center, 10.0, paint);
+      paint.style = PaintingStyle.stroke;
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant HolePainter oldDelegate) {
+    return oldDelegate.holes != holes;
+  }
+}
+```
+
+---
+
+## 6. Головний екран списку сесій
+
+### `lib/screens/target_list_screen.dart`
+
+```dart
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../database/target_database.dart';
+import '../models/target_session.dart';
+import 'target_analysis_screen.dart';
+import 'target_session_detail_screen.dart';
+
+class TargetListScreen extends StatefulWidget {
+  const TargetListScreen({super.key});
+
+  @override
+  State<TargetListScreen> createState() => _TargetListScreenState();
+}
+
+class _TargetListScreenState extends State<TargetListScreen> {
+  List<TargetSession> _sessions = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSessions();
+  }
+
+  Future<void> _loadSessions() async {
+    final sessions = await TargetDatabase.instance.getAllSessions();
+    setState(() {
+      _sessions = sessions;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Мої мішені'),
+      ),
+      body: _sessions.isEmpty
+          ? const Center(child: Text('Немає збережених мішеней'))
+          : ListView.builder(
+              itemCount: _sessions.length,
+              itemBuilder: (context, index) {
+                final session = _sessions[index];
+                return ListTile(
+                  leading: const Icon(Icons.target),
+                  title: Text(session.formattedDate),
+                  subtitle: Text('Отворів: ${session.holes.length}'),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => TargetSessionDetailScreen(session: session),
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => const TargetAnalysisScreen(),
+            ),
+          ).then((_) => _loadSessions());
+        },
+        child: const Icon(Icons.add_a_photo),
+      ),
+    );
+  }
+}
+```
+
+---
+
+## 7. Екран аналізу (фото/завантаження, редагування)
+
+### `lib/screens/target_analysis_screen.dart`
+
+```dart
+import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:image/image.dart' as img;
+import '../database/target_database.dart';
+import '../models/hole.dart';
+import '../models/target_session.dart';
+import '../services/image_processing.dart';
+import '../widgets/hole_overlay.dart';
+
+class TargetAnalysisScreen extends StatefulWidget {
+  const TargetAnalysisScreen({super.key});
+
+  @override
+  State<TargetAnalysisScreen> createState() => _TargetAnalysisScreenState();
+}
+
+class _TargetAnalysisScreenState extends State<TargetAnalysisScreen> {
+  File? _imageFile;
+  List<Hole> _holes = [];
+  bool _isLoading = false;
+  TargetSession? _previousSession; // для накладання старих отворів
+  img.Image? _displayImage;        // для відображення в HoleOverlay
+
+  final ImagePicker _picker = ImagePicker();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Аналіз мішені'),
+        actions: [
+          if (_imageFile != null)
+            IconButton(
+              icon: const Icon(Icons.save),
+              onPressed: _saveSession,
+            ),
+        ],
+      ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : Column(
+              children: [
+                Expanded(
+                  child: _imageFile == null
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              ElevatedButton.icon(
+                                onPressed: () => _pickImage(ImageSource.camera),
+                                icon: const Icon(Icons.camera_alt),
+                                label: const Text('Сфотографувати'),
+                              ),
+                              const SizedBox(height: 20),
+                              ElevatedButton.icon(
+                                onPressed: () => _pickImage(ImageSource.gallery),
+                                icon: const Icon(Icons.photo_library),
+                                label: const Text('Вибрати з галереї'),
+                              ),
+                            ],
+                          ),
+                        )
+                      : InteractiveViewer(
+                          minScale: 0.5,
+                          maxScale: 3.0,
+                          child: Stack(
+                            children: [
+                              Image.file(_imageFile!),
+                              if (_displayImage != null)
+                                Positioned.fill(
+                                  child: HoleOverlay(
+                                    imageSize: Size(_displayImage!.width.toDouble(),
+                                        _displayImage!.height.toDouble()),
+                                    holes: _holes,
+                                    isEditing: true,
+                                    onTap: (localPos) => _addHoleManually(localPos),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                ),
+                if (_holes.isNotEmpty)
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    color: Colors.grey[900],
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        Text('Отворів: ${_holes.length}'),
+                        if (_previousSession != null)
+                          Text('Попередніх: ${_previousSession!.holes.length}'),
+                        IconButton(
+                          icon: const Icon(Icons.delete),
+                          onPressed: _clearHoles,
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+    );
+  }
+
+  Future<void> _pickImage(ImageSource source) async {
+    final XFile? picked = await _picker.pickImage(source: source);
+    if (picked != null) {
+      final file = File(picked.path);
+      setState(() {
+        _imageFile = file;
+        _holes = [];
+        _previousSession = null;
+        _isLoading = true;
+      });
+      await _processImage(file);
+      setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _processImage(File imageFile) async {
+    // 1. Виявити отвори автоматично
+    final detection = await ImageProcessing.detectHoles(imageFile);
+    _holes = detection.holes;
+    _displayImage = detection.processedImage;
+
+    // 2. Перевірити, чи є попередня сесія на цю саму мішень (за ім'ям файлу)
+    final prevSession = await TargetDatabase.instance.getPreviousSessionForTarget(imageFile.path);
+    if (prevSession != null) {
+      setState(() {
+        _previousSession = prevSession;
+        // Показуємо попередні отвори (з isNew = false) для overlay
+        final oldHoles = prevSession.holes.map((h) => Hole(x: h.x, y: h.y, isNew: false)).toList();
+        _holes = [...oldHoles, ..._holes];
+      });
+    }
+  }
+
+  void _addHoleManually(Offset localPosition) {
+    // localPosition в координатах відображуваного зображення (пікселі)
+    final xNorm = localPosition.dx / _displayImage!.width;
+    final yNorm = localPosition.dy / _displayImage!.height;
+    setState(() {
+      _holes.add(Hole(x: xNorm, y: yNorm, isNew: true));
+    });
+  }
+
+  void _clearHoles() {
+    setState(() {
+      // видаляємо тільки нові отвори (або всі, якщо хочете)
+      _holes.removeWhere((h) => h.isNew);
+    });
+  }
+
+  Future<void> _saveSession() async {
+    if (_imageFile == null) return;
+    // Виділяємо лише нові отвори (ті, що isNew == true)
+    final newHoles = _holes.where((h) => h.isNew).toList();
+    if (newHoles.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Немає нових отворів для збереження')),
+      );
+      return;
+    }
+
+    // Копіюємо зображення в приватне сховище додатку
+    final dir = await getApplicationDocumentsDirectory();
+    final fileName = DateTime.now().millisecondsSinceEpoch.toString() + '.jpg';
+    final savedPath = '${dir.path}/targets/$fileName';
+    await Directory('${dir.path}/targets').create(recursive: true);
+    await _imageFile!.copy(savedPath);
+
+    final session = TargetSession(
+      imagePath: savedPath,
+      date: DateTime.now(),
+      holes: newHoles,
+      previousSessionId: _previousSession?.id,
+    );
+    await TargetDatabase.instance.insertSession(session);
+    if (mounted) {
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Сесію збережено')),
+      );
+    }
+  }
+}
+```
+
+---
+
+## 8. Екран деталей сесії
+
+### `lib/screens/target_session_detail_screen.dart`
+
+```dart
+import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:image/image.dart' as img;
+import '../models/target_session.dart';
+import '../widgets/hole_overlay.dart';
+
+class TargetSessionDetailScreen extends StatefulWidget {
+  final TargetSession session;
+
+  const TargetSessionDetailScreen({super.key, required this.session});
+
+  @override
+  State<TargetSessionDetailScreen> createState() => _TargetSessionDetailScreenState();
+}
+
+class _TargetSessionDetailScreenState extends State<TargetSessionDetailScreen> {
+  File? _imageFile;
+  img.Image? _displayImage;
+  List<Hole> _allHoles = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadImage();
+  }
+
+  Future<void> _loadImage() async {
+    final file = File(widget.session.imagePath);
+    if (await file.exists()) {
+      _imageFile = file;
+      final bytes = await file.readAsBytes();
+      final image = img.decodeImage(bytes)!;
+      _displayImage = img.copyResize(image, width: 800);
+      // Завантажуємо всі отвори (вони вже в сесії)
+      setState(() {
+        _allHoles = widget.session.holes;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Сесія від ${widget.session.formattedDate}'),
+      ),
+      body: _displayImage == null
+          ? const Center(child: CircularProgressIndicator())
+          : InteractiveViewer(
+              minScale: 0.5,
+              maxScale: 3.0,
+              child: Stack(
+                children: [
+                  Image.file(_imageFile!),
+                  Positioned.fill(
+                    child: HoleOverlay(
+                      imageSize: Size(_displayImage!.width.toDouble(),
+                          _displayImage!.height.toDouble()),
+                      holes: _allHoles,
+                      isEditing: false,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+      bottomNavigationBar: Container(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('Кількість отворів: ${_allHoles.length}'),
+            const SizedBox(height: 8),
+            Text('Розрахунок групи:'),
+            // тут можна додати розрахунок MOA (потрібно знати дистанцію, калібр)
+          ],
+        ),
+      ),
+    );
+  }
+}
+```
+
+---
+
+## 9. Інтеграція з головним меню
+
+Додайте новий пункт в нижню навігацію або окремий пункт меню:
+
+```dart
+// в main.dart або в навігації
+bottomNavigationBar: BottomNavigationBar(
+  items: const [
+    BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Головна'),
+    BottomNavigationBarItem(icon: Icon(Icons.calculate), label: 'Калькулятор'),
+    BottomNavigationBarItem(icon: Icon(Icons.target), label: 'Мішені'), // новий
+    BottomNavigationBarItem(icon: Icon(Icons.settings), label: 'Налаштування'),
+  ],
+  onTap: (index) {
+    if (index == 2) {
+      Navigator.push(context, MaterialPageRoute(builder: (_) => const TargetListScreen()));
+    }
+  },
+),
+```
+
+---
+
+## 10. Подальші покращення
+
+- **Ручне вирівнювання зображень:** для кращого накладання старих отворів можна додати можливість повертати/масштабувати зображення перед збереженням.
+- **Розрахунок групи в MOA:** додати функцію, яка за координатами отворів обчислює розкид групи в MOA (потрібно знати дистанцію до мішені та калібр).
+- **Збереження у хмару:** синхронізація з бекендом.
+- **Покращене виявлення отворів:** використання ML моделі (наприклад, TensorFlow Lite) для точності.
+
+Цей код повністю реалізує ідею економії мішеней, автоматичного виявлення отворів, ручного додавання та збереження історії сесій. Тепер у вашому **Ballistic Bilyash** з'явилася потужна функція контролю тренувань! 🏴‍☠️🎯
