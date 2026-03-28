@@ -1,0 +1,17 @@
+packages:
+  "recharts": "Used for visualizing the ballistic trajectory drop curve"
+  "framer-motion": "Smooth page transitions and tactical UI reveals"
+  "react-hook-form": "Complex form state management for all the ballistic inputs"
+  "lucide-react": "Icons for the tactical interface"
+
+images:
+  - path: "artifacts/ballistic-calculator/public/images/tactical-bg.png"
+    description: "Dark, subtle topographic map pattern with very low opacity, military tactical aesthetic, dark charcoal grays, seamless tile if possible"
+    aspect_ratio: "16:9"
+  - path: "artifacts/ballistic-calculator/public/images/logo.png"
+    description: "Minimalist modern crosshair or reticle icon in bright amber orange, solid dark background, clean and tactical precision aesthetic"
+    aspect_ratio: "1:1"
+
+notes:
+  - Using react-hook-form with valueAsNumber for native inputs to map directly to numeric schemas without heavy Zod frontend replication.
+  - UI relies heavily on a dark tactical theme established in index.css.

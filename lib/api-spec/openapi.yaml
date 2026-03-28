@@ -1,15 +1,18 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Ballistic Calculator API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: profiles
+    description: Rifle and ammunition profile management
+  - name: ballistics
+    description: Ballistic calculation operations
 paths:
   /healthz:
     get:
@@ -24,6 +27,134 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /profiles:
+    get:
+      operationId: getProfiles
+      tags: [profiles]
+      summary: List all profiles
+      description: Returns all saved rifle/ammo profiles
+      responses:
+        "200":
+          description: List of profiles
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Profile"
+    post:
+      operationId: createProfile
+      tags: [profiles]
+      summary: Create a profile
+      description: Create a new rifle/ammo profile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProfileInput"
+      responses:
+        "201":
+          description: Created profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Profile"
+
+  /profiles/{id}:
+    get:
+      operationId: getProfile
+      tags: [profiles]
+      summary: Get a profile
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Profile found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Profile"
+        "404":
+          description: Profile not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      operationId: updateProfile
+      tags: [profiles]
+      summary: Update a profile
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProfileInput"
+      responses:
+        "200":
+          description: Updated profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Profile"
+        "404":
+          description: Profile not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteProfile
+      tags: [profiles]
+      summary: Delete a profile
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Profile not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /calculate:
+    post:
+      operationId: calculateBallistics
+      tags: [ballistics]
+      summary: Calculate ballistic trajectory
+      description: Compute trajectory data for given conditions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CalculationInput"
+      responses:
+        "200":
+          description: Ballistic calculation results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CalculationResult"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +165,247 @@ components:
       required:
         - status
 
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+
+    Profile:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        caliber:
+          type: string
+        bulletWeight:
+          type: number
+          description: Bullet weight in grains
+        bulletDiameter:
+          type: number
+          description: Bullet diameter in inches
+        muzzleVelocity:
+          type: number
+          description: Muzzle velocity in feet per second
+        ballisticCoefficient:
+          type: number
+          description: Ballistic coefficient (G1 or G7)
+        bcModel:
+          type: string
+          enum: [G1, G7]
+          description: Drag model used for BC
+        zeroRange:
+          type: number
+          description: Zero range in yards
+        scopeHeight:
+          type: number
+          description: Scope height above bore in inches
+        rifleWeight:
+          type: number
+          description: Rifle weight in pounds (for recoil calc)
+        notes:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+      required:
+        - id
+        - name
+        - caliber
+        - bulletWeight
+        - bulletDiameter
+        - muzzleVelocity
+        - ballisticCoefficient
+        - bcModel
+        - zeroRange
+        - scopeHeight
+        - rifleWeight
+        - createdAt
+
+    CreateProfileInput:
+      type: object
+      properties:
+        name:
+          type: string
+        caliber:
+          type: string
+        bulletWeight:
+          type: number
+        bulletDiameter:
+          type: number
+        muzzleVelocity:
+          type: number
+        ballisticCoefficient:
+          type: number
+        bcModel:
+          type: string
+          enum: [G1, G7]
+        zeroRange:
+          type: number
+        scopeHeight:
+          type: number
+        rifleWeight:
+          type: number
+        notes:
+          type: string
+          nullable: true
+      required:
+        - name
+        - caliber
+        - bulletWeight
+        - bulletDiameter
+        - muzzleVelocity
+        - ballisticCoefficient
+        - bcModel
+        - zeroRange
+        - scopeHeight
+        - rifleWeight
+
+    CalculationInput:
+      type: object
+      properties:
+        profileId:
+          type: integer
+          nullable: true
+          description: Optional profile ID to use as base
+        muzzleVelocity:
+          type: number
+          description: FPS
+        ballisticCoefficient:
+          type: number
+        bcModel:
+          type: string
+          enum: [G1, G7]
+        bulletWeight:
+          type: number
+          description: grains
+        bulletDiameter:
+          type: number
+          description: inches
+        zeroRange:
+          type: number
+          description: yards
+        scopeHeight:
+          type: number
+          description: inches above bore
+        maxRange:
+          type: number
+          description: Maximum range in yards to calculate
+        rangeStep:
+          type: number
+          description: Distance step between calculation points in yards
+        windSpeed:
+          type: number
+          description: Wind speed in mph
+        windAngle:
+          type: number
+          description: Wind angle in degrees (0=headwind, 90=full value right crosswind)
+        temperature:
+          type: number
+          description: Temperature in Fahrenheit
+        altitude:
+          type: number
+          description: Altitude in feet above sea level
+        humidity:
+          type: number
+          description: Relative humidity 0-100
+        pressure:
+          type: number
+          description: Barometric pressure in inHg
+        targetAngle:
+          type: number
+          description: Angle to target in degrees (uphill positive, downhill negative)
+        unitSystem:
+          type: string
+          enum: [imperial, metric]
+      required:
+        - muzzleVelocity
+        - ballisticCoefficient
+        - bcModel
+        - bulletWeight
+        - bulletDiameter
+        - zeroRange
+        - scopeHeight
+        - maxRange
+        - rangeStep
+        - windSpeed
+        - windAngle
+        - temperature
+        - altitude
+        - humidity
+        - pressure
+        - targetAngle
+        - unitSystem
+
+    TrajectoryPoint:
+      type: object
+      properties:
+        range:
+          type: number
+          description: Range in yards
+        drop:
+          type: number
+          description: Bullet drop in inches
+        windDrift:
+          type: number
+          description: Wind drift in inches
+        velocity:
+          type: number
+          description: Velocity in fps
+        energy:
+          type: number
+          description: Energy in ft-lbs
+        timeOfFlight:
+          type: number
+          description: Time of flight in seconds
+        dropMOA:
+          type: number
+          description: Drop correction in MOA
+        dropMRAD:
+          type: number
+          description: Drop correction in MRAD (milliradians)
+        windMOA:
+          type: number
+          description: Wind correction in MOA
+        windMRAD:
+          type: number
+          description: Wind correction in MRAD
+      required:
+        - range
+        - drop
+        - windDrift
+        - velocity
+        - energy
+        - timeOfFlight
+        - dropMOA
+        - dropMRAD
+        - windMOA
+        - windMRAD
+
+    CalculationResult:
+      type: object
+      properties:
+        trajectory:
+          type: array
+          items:
+            $ref: "#/components/schemas/TrajectoryPoint"
+        maxRange:
+          type: number
+        zeroRange:
+          type: number
+        pointBlankRange:
+          type: number
+          description: Maximum range within +/- 3 inches of zero
+        supersonicLimit:
+          type: number
+          description: Range where bullet goes subsonic (fps < 1340)
+      required:
+        - trajectory
+        - maxRange
+        - zeroRange
+        - pointBlankRange
+        - supersonicLimit
