@@ -1,6 +1,6 @@
 import { ReactNode } from "react";
 import { Link, useLocation } from "wouter";
-import { Crosshair, Target, Database, Menu, Aperture } from "lucide-react";
+import { Crosshair, Target, Database, Menu, Aperture, Bot } from "lucide-react";
 import { motion } from "framer-motion";
 import { useLanguage } from "@/contexts/language-context";
 
@@ -51,6 +51,7 @@ export function Layout({ children }: { children: ReactNode }) {
             {navLink("/", t.nav.calculator, <Target className="w-4 h-4" />)}
             {navLink("/profiles", t.nav.profiles, <Database className="w-4 h-4" />)}
             {navLink("/targets", t.nav.targets, <Aperture className="w-4 h-4" />)}
+            {navLink("/drones", t.nav.drones, <Bot className="w-4 h-4" />)}
 
             {/* Language Toggle */}
             <div className="ml-3 flex items-center border border-border rounded-md overflow-hidden">
