@@ -4,7 +4,7 @@ import { Layout } from "@/components/layout";
 import { TrajectoryChart } from "@/components/trajectory-chart";
 import { useCalculatorMutation, useProfiles } from "@/hooks/use-ballistics";
 import { Activity, Wind, Mountain, Layers, Target, ChevronRight, Loader2, Save } from "lucide-react";
-import type { CalculationInput, CalculationResult } from "@workspace/api-client-react/src/generated/api.schemas";
+import type { CalculationInput, CalculationResult } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/contexts/language-context";
 
@@ -84,7 +84,7 @@ export default function Calculator() {
     );
   };
 
-  const InputField = ({ label, name, step = "any" }: { label: string, name: keyof CalculationInput, step?: string }) => (
+  const InputField = ({ label, name, step = "any" }: { label: string, name: Extract<keyof CalculationInput, string>, step?: string }) => (
     <div className="space-y-1.5">
       <label className="text-xs font-display font-semibold text-muted-foreground uppercase tracking-wider">{label}</label>
       <input

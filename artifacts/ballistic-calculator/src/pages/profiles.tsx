@@ -4,7 +4,7 @@ import { Layout } from "@/components/layout";
 import { useProfiles, useCreateProfileMutation, useDeleteProfileMutation, useUpdateProfileMutation } from "@/hooks/use-ballistics";
 import { Database, Plus, Trash2, Edit2, X, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import type { CreateProfileInput, Profile } from "@workspace/api-client-react/src/generated/api.schemas";
+import type { CreateProfileInput, Profile } from "@workspace/api-client-react";
 import { useLanguage } from "@/contexts/language-context";
 
 export default function Profiles() {
@@ -87,7 +87,7 @@ export default function Profiles() {
     }
   };
 
-  const InputField = ({ label, name, step = "any", type = "number" }: { label: string, name: keyof CreateProfileInput, step?: string, type?: string }) => (
+  const InputField = ({ label, name, step = "any", type = "number" }: { label: string, name: Extract<keyof CreateProfileInput, string>, step?: string, type?: string }) => (
     <div className="space-y-1.5">
       <label className="text-xs font-display font-semibold text-muted-foreground uppercase tracking-wider">{label}</label>
       <input

@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db } from "../lib/db.js";
+import { db } from "@workspace/db";
 import { targetSessionsTable, targetHolesTable } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
 import { z } from "zod/v4";
@@ -15,8 +15,8 @@ const createTargetSessionSchema = z.object({
   name: z.string().min(1),
   distanceYards: z.number().positive(),
   targetWidthInches: z.number().positive(),
-  imageData: z.string().min(1),
-  notes: z.string().optional().nullable(),
+  imageData: z.string().min(1).max(5_000_000),
+  notes: z.string().max(2000).optional().nullable(),
   holes: z.array(targetHoleSchema),
   holeCount: z.number().int().min(0),
   esInches: z.number().nullable().optional(),
@@ -51,7 +51,8 @@ router.get("/target-sessions", async (_req, res) => {
 router.post("/target-sessions", async (req, res) => {
   const parsed = createTargetSessionSchema.safeParse(req.body);
   if (!parsed.success) {
-    return res.status(400).json({ error: "Invalid request body" });
+    res.status(400).json({ error: "Invalid request body" });
+    return;
   }
 
   const { holes, ...sessionData } = parsed.data;
@@ -92,7 +93,10 @@ router.post("/target-sessions", async (req, res) => {
 
 router.delete("/target-sessions/:id", async (req, res) => {
   const id = parseInt(req.params.id, 10);
-  if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+  if (isNaN(id)) {
+    res.status(400).json({ error: "Invalid ID" });
+    return;
+  }
 
   try {
     await db.delete(targetHolesTable).where(eq(targetHolesTable.sessionId, id));
@@ -102,7 +106,8 @@ router.delete("/target-sessions/:id", async (req, res) => {
       .returning();
 
     if (deleted.length === 0) {
-      return res.status(404).json({ error: "Session not found" });
+      res.status(404).json({ error: "Session not found" });
+      return;
     }
 
     res.status(204).send();

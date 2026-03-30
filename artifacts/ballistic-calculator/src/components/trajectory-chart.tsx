@@ -1,5 +1,5 @@
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine } from "recharts";
-import type { TrajectoryPoint } from "@workspace/api-client-react/src/generated/api.schemas";
+import type { TrajectoryPoint } from "@workspace/api-client-react";
 
 interface TrajectoryChartProps {
   data: TrajectoryPoint[];
